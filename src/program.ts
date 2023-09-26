@@ -26,6 +26,11 @@ enum OptionNames {
     OUT_DEPS = "out_deps",
     OUT_RESOLVED_DEPS = "out_resolved_deps",
     RESUME_LAST_RUN = "resume_last_run",
+    PROXY_PROTOCOL = "proxy_protocol",
+    PROXY_HOST = "proxy_host",
+    PROXY_PORT = "proxy_port",
+    PROXY_USERNAME = "proxy_username",
+    PROXY_PASSWORD = "proxy_password",
 }
 interface Options {
     max_depth: number;
@@ -33,13 +38,23 @@ interface Options {
     out_deps: boolean;
     out_resolved_deps: boolean;
     resume_last_run: boolean;
+    proxy_protocol: string | undefined;
+    proxy_host: string;
+    proxy_port: number;
+    proxy_username: string;
+    proxy_password: string;
 }
 const defaultOptions: Options = {
     max_depth: Infinity,
     dev_deps: false,
     out_deps: false,
     out_resolved_deps: true,
-    resume_last_run: true
+    resume_last_run: true,
+    proxy_protocol: undefined,
+    proxy_host: "",
+    proxy_port: 80,
+    proxy_username: "",
+    proxy_password: "",
 }
 export default class Program {
     protected depsWriteStream: fs.WriteStream | unknown;
@@ -85,6 +100,20 @@ export default class Program {
         }
         if (this.options.out_resolved_deps) {
             this.depsResolvedWriteStream = fs.createWriteStream(path.resolve(process.cwd(), Files.RESOLVED_DEPS), { flags: "a" });
+        }
+
+        if (this.options.proxy_protocol != undefined) {
+            Package.proxyConfig = {
+                protocol: this.options.proxy_protocol,
+                host: this.options.proxy_host,
+                port: this.options.proxy_port,
+                auth: {
+                    username: this.options.proxy_username,
+                    password: this.options.proxy_password
+                }
+            };
+
+            console.log(chalk.yellow(`Using proxy: ${this.options.proxy_protocol}://${this.options.proxy_host}:${this.options.proxy_port}`));
         }
 
         const dependencies: Dependencies = new Dependencies(rootPackage!);
@@ -157,6 +186,11 @@ export default class Program {
         program.option(`--${OptionNames.OUT_DEPS} <out>`, "export dependencies list?", this.options.out_deps)
         program.option(`--${OptionNames.OUT_RESOLVED_DEPS} <out>`, "export resolved dependencies list?", this.options.out_resolved_deps)
         program.option(`-re, --${OptionNames.RESUME_LAST_RUN} <resume>`, "resume last run?", this.options.resume_last_run)
+        program.option(`--${OptionNames.PROXY_PROTOCOL} <protocol>`, "proxy protocol", this.options.proxy_protocol)
+        program.option(`--${OptionNames.PROXY_HOST} <host>`, "proxy host", this.options.proxy_host)
+        program.option(`--${OptionNames.PROXY_PORT} <port>`, "proxy port", this.options.proxy_port.toString())
+        program.option(`--${OptionNames.PROXY_USERNAME} <username>`, "proxy username", this.options.proxy_username)
+        program.option(`--${OptionNames.PROXY_PASSWORD} <password>`, "proxy password", this.options.proxy_password)
     }
     protected setActions() {
         program.action(this.onAction.bind(this));
@@ -184,7 +218,7 @@ export default class Program {
             chalkFunc = chalk.white;
         }
 
-        if (options !== undefined || Object.keys(options).length === 0) {
+        if (options !== undefined) {
             text = figlet.textSync(text, options!);
         }
         console.log(chalkFunc!(text));

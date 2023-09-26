@@ -1,6 +1,6 @@
 /// <reference path="../types/api-response.d.ts" />
 /// <reference path="../types/package.d.ts" />
-import fetch, { Response } from "node-fetch";
+import axios, { AxiosProxyConfig, AxiosResponse } from "axios";
 import npmPackageArg from "npm-package-arg";
 import semver from "semver";
 import fs from "fs";
@@ -45,6 +45,8 @@ function compactResponse(apiResponse: APIResponse) {
 }
 export default class Package {
     static readonly MAX_TRIES: number = 3;
+
+    public static proxyConfig: AxiosProxyConfig | undefined = undefined;
 
     public dependencies: Package[] = [];
     public dependents: Package[] = [];
@@ -101,9 +103,9 @@ export default class Package {
         let tgzFileData: Buffer;
         do {
             try {
-                const response = await fetch(this.tarballURL!);
-                if (!response) continue;
-                tgzFileData = await response.buffer();
+                const response = await axios.get(this.tarballURL!, { responseType: "arraybuffer", proxy: Package.proxyConfig });
+                if (!response.data) continue;
+                tgzFileData = await response.data;
                 if (!tgzFileData) continue;
                 break;
             } catch (error) {
@@ -111,7 +113,7 @@ export default class Package {
             }
         } while (++triesCount < Package.MAX_TRIES);
         if (triesCount == Package.MAX_TRIES) throw "`downloading ${this} failed`";
-        fs.writeFileSync(path.resolve(process.cwd(), this.tgzFileName), tgzFileData!);
+        fs.writeFileSync(path.resolve(process.cwd(), "out", this.tgzFileName), tgzFileData!);
         // TODO: add shasum check.
     }
     async getDependencies(includeDevDependencies: boolean): Promise<Package[]> {
@@ -229,16 +231,16 @@ export default class Package {
         let apiResponse: APIResponse;
         let triesCount = 0;
         do {
-            let response: Response | undefined = undefined;
+            let response: AxiosResponse | undefined = undefined;
             try {
-                response = await fetch(`https://registry.npmjs.org/${apiRequest.name}/${apiRequest.version!}`); // `npm view` returns inconsistent format. so i made direct call to registry
+                response = await axios.get(`https://registry.npmjs.org/${apiRequest.name}/${apiRequest.version!}`, { proxy: Package.proxyConfig });
             } catch (error) {
                 // TODO: Different errors
             }
             if (!response) {
                 continue;
             }
-            if (!response.ok) {
+            if (!response.data) {
                 switch (response.status) {
                     case StatusCode.ClientErrorNotFound:
                         if (apiRequest.version === "" || apiRequest.version === LATEST) {
@@ -268,7 +270,7 @@ export default class Package {
                 }
             }
             try {
-                apiResponse = await <APIResponse>(<unknown>(response.json()));
+                apiResponse = await <APIResponse>(<unknown>(response.data));
                 if (!apiResponse) {
                     continue;
                 }
